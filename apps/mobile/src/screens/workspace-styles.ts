@@ -2263,23 +2263,11 @@ const baseWorkspaceStyles = StyleSheet.create({
   bottomNavItem: {
     alignItems: "center",
     gap: 4,
-    justifyContent: "center",
-    minHeight: 48,
-    minWidth: 80,
-  },
-  bottomNavActiveIndicator: {
-    backgroundColor: "#10b981",
-    borderRadius: 2,
-    height: 3,
-    position: "absolute",
-    top: 0,
-    width: 20,
+    minHeight: MOBILE_UI_METRICS.minimumTouchTarget,
+    minWidth: 58,
   },
   bottomNavIcon: {
     position: "relative",
-  },
-  bottomNavIconActive: {
-    color: "#10b981",
   },
   bottomNavBadge: {
     backgroundColor: "#10b981",
@@ -2299,7 +2287,6 @@ const baseWorkspaceStyles = StyleSheet.create({
   },
   bottomNavTextActive: {
     color: "#0f172a",
-    fontWeight: "800",
   },
   previewBackdrop: {
     alignItems: "center",

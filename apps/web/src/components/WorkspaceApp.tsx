@@ -1716,11 +1716,7 @@ export const WorkspaceApp = ({
     setTemplatesOpen(false);
     setMobileBottomNavActive("home");
     creatingMemoSelectionRef.current = true;
-    let resumeDesktopSync: (() => void) | null = null;
     try {
-      if (isDesktopResourceRuntime()) {
-        resumeDesktopSync = await (await import("@/lib/desktop-sync")).pauseDesktopSyncForImport();
-      }
       const preparedFile = imageCompressionEnabled ? (await compressImageForUpload(file)).file : file;
       const memo = await createScreenshotMemo({
         notebookId,
@@ -1754,9 +1750,7 @@ export const WorkspaceApp = ({
           contentMarkdown: content.contentMarkdown,
           tags: created.tags,
         }),
-        deleteMemo: (memoId) => isDesktopResourceRuntime()
-          ? import("@/lib/desktop-repository").then(({ cancelPendingDesktopImportMemo }) => cancelPendingDesktopImportMemo(memoId))
-          : repository.deleteMemo(memoId, true),
+        deleteMemo: (memoId) => repository.deleteMemo(memoId, true),
       });
       await putLocalMemo(localDataScope, memo);
       revealCreatedMemo(memo);
@@ -1768,8 +1762,6 @@ export const WorkspaceApp = ({
         title: t("memoList.importScreenshotFailedTitle"),
         description: t("memoList.importScreenshotFailed"),
       });
-    } finally {
-      resumeDesktopSync?.();
     }
   }, [defaultMemoNotebookId, imageCompressionEnabled, localDataScope, memoView, notebooks, repository, selectedNotebookId, t]);
 
@@ -1817,11 +1809,7 @@ export const WorkspaceApp = ({
     creatingMemoSelectionRef.current = true;
     setWeChatImportsInProgress((count) => count + 1);
     let savedMemo: MemoDetail | null = null;
-    let resumeDesktopSync: (() => void) | null = null;
     try {
-      if (isDesktopResourceRuntime()) {
-        resumeDesktopSync = await (await import("@/lib/desktop-sync")).pauseDesktopSyncForImport();
-      }
       const memo = await createWeChatChatMemo({
         notebookId,
         title: payload.title?.trim() || "",
@@ -1866,9 +1854,7 @@ export const WorkspaceApp = ({
           contentMarkdown: content.contentMarkdown,
           tags: created.tags,
         }),
-        deleteMemo: (memoId) => isDesktopResourceRuntime()
-          ? import("@/lib/desktop-repository").then(({ cancelPendingDesktopImportMemo }) => cancelPendingDesktopImportMemo(memoId))
-          : repository.deleteMemo(memoId, true),
+        deleteMemo: (memoId) => repository.deleteMemo(memoId, true),
       });
       savedMemo = memo;
       await bridge?.finishWeChatImport?.(importId, true).catch(() => undefined);
@@ -1881,7 +1867,6 @@ export const WorkspaceApp = ({
       }
       creatingMemoSelectionRef.current = false;
     } finally {
-      resumeDesktopSync?.();
       setWeChatImportsInProgress((count) => Math.max(0, count - 1));
     }
   }, [defaultMemoNotebookId, imageCompressionEnabled, localDataScope, memoView, notebooks, repository, selectedNotebookId, t]);
@@ -3017,8 +3002,6 @@ export const WorkspaceApp = ({
       : isStandaloneRuntime
         ? t("workspace.pullToRefresh.pullNotes")
         : t("workspace.pullToRefresh.pullPage");
-  const showMobileSettingsNav = visibleActivePane === "editor" && rightView === "settings";
-
   return (
     <WorkspaceMotionProvider>
       <div className="edgeever-workspace-shell flex h-[100dvh] overflow-hidden text-slate-950">
@@ -3277,7 +3260,7 @@ export const WorkspaceApp = ({
             />
           </section>
 
-          <section className={cn("edgeever-workspace-editor min-h-0 min-w-0 lg:block", visibleActivePane === "editor" ? "block" : "hidden", showMobileSettingsNav && "pb-[calc(4rem+env(safe-area-inset-bottom))] lg:pb-0")}>
+          <section className={cn("edgeever-workspace-editor min-h-0 min-w-0 lg:block", visibleActivePane === "editor" ? "block" : "hidden")}>
             {shouldRenderRightPane && (
               <Suspense fallback={<PaneLoadingFallback label={rightPaneLoadingLabel} />}>
                 <m.div key={rightView} className="h-full min-h-0 min-w-0" {...paneEnterMotion}>
@@ -3628,7 +3611,7 @@ export const WorkspaceApp = ({
         options={requestedPluginPanel?.options}
         onClose={() => setRequestedPluginPanel(null)}
       />
-      {(visibleActivePane !== "editor" || showMobileSettingsNav) && !memoSelectionModeActive && (
+      {visibleActivePane !== "editor" && !memoSelectionModeActive && (
         <MobileBottomNav
           activeItem={mobileBottomNavActive}
           canCreateMemo={canCreateMemo && memoView !== "trash"}

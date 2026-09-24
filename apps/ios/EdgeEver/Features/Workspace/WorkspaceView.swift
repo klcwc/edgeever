@@ -48,19 +48,15 @@ struct WorkspaceView: View {
             // List pads the solid white chrome height; create button lives inside the tab bar under the separator.
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
-                    if showSettings {
-                        SettingsView(onClose: { showSettings = false })
-                    } else {
-                        syncBanner
-                        listHeader
-                        NotesListView(
-                            store: store,
-                            path: $path,
-                            onCreateNote: { openCreateNote() },
-                            onCreateFromTemplate: { openCreateFromTemplate() }
-                        )
+                    syncBanner
+                    listHeader
+                    NotesListView(
+                        store: store,
+                        path: $path,
+                        onCreateNote: { openCreateNote() },
+                        onCreateFromTemplate: { openCreateFromTemplate() }
+                    )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
                 }
                 .background(AppTheme.background)
                 .padding(.bottom, showsBottomChrome ? bottomChromeHeight : 0)
@@ -87,6 +83,10 @@ struct WorkspaceView: View {
                         }
                     }
                 }
+            }
+            // Android Me is full-screen (activeView === "settings"), not a half-sheet Form.
+            .fullScreenCover(isPresented: $showSettings) {
+                SettingsView()
             }
             // Android CreateMemoModal is fullScreen — not a half sheet / Form.
             .fullScreenCover(isPresented: $showNewNote) {
@@ -542,9 +542,8 @@ struct WorkspaceView: View {
                 bottomNavItem(
                     systemImage: "house.fill",
                     label: env.preferences.t("首页", en: "Home"),
-                    active: !showSettings
+                    active: true
                 ) {
-                    showSettings = false
                     withAnimation(Motion.chip) {
                         path = NavigationPath()
                     }
@@ -595,7 +594,7 @@ struct WorkspaceView: View {
                 bottomNavItem(
                     systemImage: "person",
                     label: env.preferences.t("我的", en: "Me"),
-                    active: showSettings
+                    active: false
                 ) {
                     showSettings = true
                 }
@@ -622,20 +621,13 @@ struct WorkspaceView: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 20, weight: active ? .semibold : .regular))
-                    .foregroundStyle(active ? AppTheme.accentAction : AppTheme.secondary)
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(active ? AppTheme.title : AppTheme.secondary)
                 Text(label)
                     .font(AppTheme.bottomNavFont)
                     .foregroundStyle(active ? AppTheme.title : AppTheme.secondary)
             }
-            .frame(width: 80, height: 48)
-            .overlay(alignment: .top) {
-                if active {
-                    Capsule()
-                        .fill(AppTheme.accentAction)
-                        .frame(width: 20, height: 3)
-                }
-            }
+            .frame(minWidth: 58, minHeight: MobileUIMetrics.minimumTouchTarget)
         }
         .buttonStyle(.plain)
         .frame(maxWidth: .infinity)

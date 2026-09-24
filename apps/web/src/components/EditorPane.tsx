@@ -192,7 +192,6 @@ import {
 } from "@/lib/editor-external-link";
 import { insertAiDraftAtTextCursor } from "@/lib/ai-draft-insertion";
 import { createFileBatchQueue, processFileUploadBatch } from "@/lib/file-batch";
-import { resourceToMarkdown } from "@/lib/markdown-resource-paste";
 import { MEMO_ID_REMAPPED_EVENT, MEMO_SYNC_ACKNOWLEDGED_EVENT } from "@/lib/sync-events";
 import { useStandaloneMobileEditor } from "@/hooks/useStandaloneMobileEditor";
 import { statusSettleMotion } from "@/lib/motion";
@@ -887,39 +886,6 @@ const RichEditorPane = ({
     }
   }, [focusMobileInputTarget, isMobileViewport, memo?.id, mobileDefaultEditMemoId, onMobileDefaultEditConsumed, readOnly]);
 
-  const uploadEditorResource = useCallback(async (targetMemoId: string, uploadFile: File, isImage: boolean) => {
-    try {
-      const resource = (await repository.uploadMemoResource(targetMemoId, uploadFile)).resource;
-      return { ...resource, url: toDesktopResourceUrl(resource.url) };
-    } catch (error) {
-      if (!isDesktopResourceRuntime()) throw error;
-      const listed = await repository.listResources().catch(() => ({ resources: [] as Array<{ memoId?: string; url: string; filename?: string | null; kind?: string | null; mimeType?: string | null; byteSize?: number }> }));
-      const existing = findMatchingMemoResource(
-        listed.resources.filter((item) => item.memoId === targetMemoId),
-        uploadFile.name,
-        isImage ? "image" : "attachment",
-      );
-      if (existing) {
-        return {
-          kind: isImage ? "image" as const : "attachment" as const,
-          filename: existing.filename || uploadFile.name,
-          mimeType: existing.mimeType || uploadFile.type || null,
-          byteSize: existing.byteSize ?? uploadFile.size,
-          url: toDesktopResourceUrl(existing.url),
-        };
-      }
-      const staged = await stageDesktopResource(targetMemoId, uploadFile);
-      if (!staged) throw error;
-      return {
-        kind: isImage ? "image" as const : "attachment" as const,
-        filename: uploadFile.name,
-        mimeType: uploadFile.type || null,
-        byteSize: uploadFile.size,
-        url: `edgeever-staged://${staged.id}`,
-      };
-    }
-  }, [repository]);
-
   const insertResourceFiles = useCallback((files: File[]) => {
     const currentMemo = memoRef.current;
     const currentEditor = editorRef.current;
@@ -975,7 +941,44 @@ const RichEditorPane = ({
         setImageUploadState("uploading");
         if (placeholder) updateImageUploadPlaceholder(editorRef.current, placeholder,
           t("editor.uploadState.uploading"));
-        const resource = await uploadEditorResource(targetMemoId, uploadFile, isImage);
+        let resource: {
+          kind: "image" | "attachment";
+          filename: string | null;
+          mimeType: string | null;
+          byteSize: number;
+          url: string;
+        };
+        try {
+          const uploadedResource = (await repository.uploadMemoResource(targetMemoId, uploadFile)).resource;
+          resource = { ...uploadedResource, url: toDesktopResourceUrl(uploadedResource.url) };
+        } catch (error) {
+          if (!isDesktopResourceRuntime()) throw error;
+          const listed = await repository.listResources().catch(() => ({ resources: [] as Array<{ memoId?: string; url: string; filename?: string | null; kind?: string | null; mimeType?: string | null; byteSize?: number }> }));
+          const existing = findMatchingMemoResource(
+            listed.resources.filter((item) => item.memoId === targetMemoId),
+            uploadFile.name,
+            isImage ? "image" : "attachment",
+          );
+          if (existing) {
+            resource = {
+              kind: isImage ? "image" : "attachment",
+              filename: existing.filename || uploadFile.name,
+              mimeType: existing.mimeType || uploadFile.type || null,
+              byteSize: existing.byteSize ?? uploadFile.size,
+              url: toDesktopResourceUrl(existing.url),
+            };
+          } else {
+            const staged = await stageDesktopResource(targetMemoId, uploadFile);
+            if (!staged) throw error;
+            resource = {
+              kind: isImage ? "image" : "attachment",
+              filename: uploadFile.name,
+              mimeType: uploadFile.type || null,
+              byteSize: uploadFile.size,
+              url: `edgeever-staged://${staged.id}`,
+            };
+          }
+        }
         if (resource.kind === "image") {
           imageReadiness.push(waitForImageSourceReady(resource.url));
         }
@@ -1079,7 +1082,7 @@ const RichEditorPane = ({
       });
     });
     return true;
-  }, [queryClient, resourceInsertionLimit, t, uploadEditorResource]);
+  }, [queryClient, repository, resourceInsertionLimit, t]);
 
   const pluginEmbedExtension = useMemo(() => createPluginEmbedExtension(pluginHost), [pluginHost]);
   const inlineFieldExtension = useMemo(() => createInlineFieldExtension(i18n.language), [i18n.language]);
@@ -1278,32 +1281,6 @@ const RichEditorPane = ({
     hydratingRef,
   });
   const useMarkdownSourceEditor = !useMobilePlainTextEditor && isMarkdownMode;
-
-  const uploadMarkdownPasteFiles = useCallback(async (files: File[]) => {
-    const targetMemoId = memoRef.current?.id;
-    if (!targetMemoId || effectiveReadOnly) return "";
-    setImageUploadState("uploading");
-    const results = await processFileUploadBatch(files, async (file) => {
-      const shouldCompress = SUPPORTED_PASTE_IMAGE_TYPES.has(file.type) && imageCompressionEnabledRef.current;
-      if (!shouldCompress) return file;
-      setImageUploadState("compressing");
-      return (await compressImageForUpload(file)).file;
-    }, async (uploadFile, file) => {
-      if (memoRef.current?.id !== targetMemoId) throw new Error("The active note changed during upload");
-      setImageUploadState("uploading");
-      return uploadEditorResource(targetMemoId, uploadFile, SUPPORTED_PASTE_IMAGE_TYPES.has(file.type));
-    });
-    if (results.some((result) => result.status === "fulfilled")) {
-      void queryClient.invalidateQueries({ queryKey: ["resources"] });
-    }
-    const failed = results.some((result) => result.status === "rejected");
-    setImageUploadState(failed ? "error" : "idle");
-    if (failed) window.setTimeout(() => setImageUploadState("idle"), 2200);
-    return results
-      .filter((result) => result.status === "fulfilled")
-      .map((result) => resourceToMarkdown(result.value, result.file.name))
-      .join("\n\n");
-  }, [effectiveReadOnly, queryClient, uploadEditorResource]);
 
   useEffect(() => {
     const syncPreference = (event?: Event) => {
@@ -4108,10 +4085,8 @@ const RichEditorPane = ({
                 <Suspense fallback={<div className="h-full w-full" />}>
                   <MarkdownSourceEditor
                     ref={markdownSourceEditorRef}
-                    memoId={memo?.id ?? ""}
                     value={markdownSource}
                     onChange={handleMarkdownSourceChange}
-                    onPasteFiles={uploadMarkdownPasteFiles}
                     themeName={markdownTheme}
                     readOnly={effectiveReadOnly}
                     placeholder={`# ${t("editor.placeholder")}`}
